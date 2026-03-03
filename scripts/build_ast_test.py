@@ -13,7 +13,7 @@ SPLIT = "train"
 
 SKIP_FIRST = 20000          # skip training samples
 MAX_TEST_SAMPLES = 2000
-MAX_CHARS = 8000
+MAX_CHARS = 16000 # Increase from prev iteration since JSON is more verbose than raw AST dumps
 
 
 def extract_function_modules(tree: ast.AST):
@@ -22,8 +22,18 @@ def extract_function_modules(tree: ast.AST):
             yield ast.Module(body=[node], type_ignores=[])
 
 
-def ast_to_dump(tree: ast.AST) -> str:
-    return ast.dump(tree, include_attributes=False, indent=None)
+def ast_to_json(node): #Recursively convert AST node to JSON-serializable dict
+    if isinstance(node, ast.AST):
+        result = {"_type": type(node).__name__}
+        for field, value in ast.iter_fields(node):
+            result[field] = ast_to_json(value)
+        return result
+    elif isinstance(node, list):
+        return [ast_to_json(item) for item in node]
+    elif isinstance(node, (str, int, float, bool, type(None))):
+        return node
+    else:
+        return str(node)  # fallback for constants like Ellipsis
 
 
 def main():
@@ -53,7 +63,8 @@ def main():
 
             for fn_mod in extract_function_modules(mod):
                 try:
-                    dump_str = ast_to_dump(fn_mod)
+                    ast_json = ast_to_json(fn_mod)
+                    dump_str = json.dumps(ast_json, ensure_ascii=False)
                 except Exception:
                     continue
 
