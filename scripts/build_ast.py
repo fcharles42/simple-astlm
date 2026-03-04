@@ -49,7 +49,7 @@ def main():
     written = 0
     skipped = 0
 
-    with open(OUT_PATH, "w", encoding="utf-8") as f:
+    with open(OUT_PATH, "w", encoding="utf-8", errors="replace") as f:
         for ex in tqdm(dataset):
             if written >= MAX_SAMPLES:
                 break
