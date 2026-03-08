@@ -9,7 +9,7 @@ sys.path.insert(0, REPO_ROOT)
 
 BASE_MODEL = "Qwen/Qwen2.5-0.5B"
 
-LORA_PATH = os.path.join(REPO_ROOT, "checkpoints", "lora", "checkpoint-277")
+LORA_PATH = os.path.join(REPO_ROOT, "checkpoints", "lora", "checkpoint-690")
 TEST_TOKENIZED_PATH = os.path.join(REPO_ROOT, "data", "processed", "tokenized_test.pt")
 
 

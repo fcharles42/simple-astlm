@@ -50,7 +50,7 @@ def main():
     seen = 0
     skipped = 0
 
-    with open(OUT_PATH, "w", encoding="utf-8") as f:
+    with open(OUT_PATH, "w", encoding="utf-8", errors="replace") as f:
         for ex in tqdm(dataset):
             code = ex.get("content", "")
             if not code.strip():
