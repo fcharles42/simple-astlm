@@ -73,6 +73,7 @@ def main():
         task_type="CAUSAL_LM",
     )
 
+    model.resize_token_embeddings(len(tokenizer))
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 

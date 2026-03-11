@@ -14,6 +14,8 @@ IN_PATH = os.path.join(REPO_ROOT, "data", "processed", "astdump.jsonl")
 OUT_PATH = os.path.join(REPO_ROOT, "data", "processed", "tokenized.pt")
 
 MAX_SEQ_LEN = 2048
+AST_START = "<ast_start>"
+AST_END = "<ast_end>"
 
 
 def main():
@@ -22,6 +24,10 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(
         MODEL_NAME, trust_remote_code=True, use_fast=True
     )
+    special_tokens = {"additional_special_tokens": [AST_START, AST_END]}
+    tokenizer.add_special_tokens(special_tokens)
+    TOKENIZER_OUT = os.path.join(REPO_ROOT, "data", "processed", "tokenizer")
+    tokenizer.save_pretrained(TOKENIZER_OUT)
     tokenizer.pad_token = tokenizer.eos_token
     pad_id = tokenizer.pad_token_id
 
@@ -41,9 +47,7 @@ def main():
                 skipped += 1
                 continue
 
-            # add EOS separator between samples
             ids.append(tokenizer.eos_token_id)
-
             buffer.extend(ids)
 
             # slicing out full blocks

@@ -12,7 +12,10 @@ DATA_DIR = "data/python"
 SPLIT = "train"
 
 MAX_SAMPLES = 20000
-MAX_CHARS = 16000 # Increase from prev iteration since JSON is more verbose than raw AST dumps  
+MAX_CHARS = 16000 # Increase from prev iteration since JSON is more verbose than raw AST dumps 
+
+AST_START = "<ast_start>"
+AST_END = "<ast_end>"
 
 
 def extract_function_modules(tree: ast.AST):
@@ -77,7 +80,7 @@ def main():
                     skipped += 1
                     continue
 
-                obj = {"ast_dump": dump_str}
+                obj = {"ast_dump": f"{AST_START}{dump_str}{AST_END}"}
                 f.write(json.dumps(obj, ensure_ascii=False) + "\n")
                 written += 1
 
