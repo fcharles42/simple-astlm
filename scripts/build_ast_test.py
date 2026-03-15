@@ -15,6 +15,9 @@ SKIP_FIRST = 20000          # skip training samples
 MAX_TEST_SAMPLES = 2000
 MAX_CHARS = 16000 # Increase from prev iteration since JSON is more verbose than raw AST dumps
 
+AST_START = "<ast_start>"
+AST_END = "<ast_end>"
+
 
 def extract_function_modules(tree: ast.AST):
     for node in ast.walk(tree):
@@ -77,7 +80,7 @@ def main():
                 if seen <= SKIP_FIRST:
                     continue
 
-                obj = {"ast_dump": dump_str}
+                obj = {"ast_dump": f"{AST_START}{dump_str}{AST_END}"}
                 f.write(json.dumps(obj, ensure_ascii=False) + "\n")
                 written += 1
 

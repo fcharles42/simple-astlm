@@ -11,13 +11,16 @@ IN_PATH = os.path.join(REPO_ROOT, "data", "processed", "astdump_test.jsonl")
 OUT_PATH = os.path.join(REPO_ROOT, "data", "processed", "tokenized_test.pt")
 
 MAX_SEQ_LEN = 2048
-
+AST_START = "<ast_start>"
+AST_END = "<ast_end>"
 
 def main():
     os.makedirs(os.path.dirname(OUT_PATH), exist_ok=True)
 
+    TOKENIZER_PATH = os.path.join(REPO_ROOT, "data", "processed", "tokenizer")
+
     tokenizer = AutoTokenizer.from_pretrained(
-        MODEL_NAME, trust_remote_code=True, use_fast=True
+        TOKENIZER_PATH, trust_remote_code=True, use_fast=True
     )
     tokenizer.pad_token = tokenizer.eos_token
     pad_id = tokenizer.pad_token_id

@@ -9,6 +9,7 @@ sys.path.insert(0, REPO_ROOT)
 MODEL_NAME = "Qwen/Qwen2.5-0.5B"
 
 TOKENIZED_PATH = os.path.join(REPO_ROOT, "data", "processed", "tokenized.pt")
+TOKENIZER_PATH = os.path.join(REPO_ROOT, "data", "processed", "tokenizer")
 OUT_DIR = os.path.join(REPO_ROOT, "checkpoints", "lora")
 
 LR = 1e-4
@@ -46,7 +47,7 @@ def main():
         raise FileNotFoundError(f"Missing: {TOKENIZED_PATH}")
 
     tokenizer = AutoTokenizer.from_pretrained(
-        MODEL_NAME,
+        TOKENIZER_PATH,
         trust_remote_code=True,
         use_fast=True,
     )
