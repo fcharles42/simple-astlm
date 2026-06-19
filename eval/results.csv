@@ -1,0 +1,6 @@
+run,checkpoint,steps,pct_of_run,tokens_seen,family,ft,bt,lora,valid_rate,pass_at_k,json_rate,truncation_rate,sig_match_rate,nontrivial_rate,mean_node_count,n_samples
+base-ft15,checkpoint-1500,1500,50.0,24576000,base,ft15,BT,True,ERROR,,,,,,,
+base-ft15,checkpoint-3000,3000,100.0,49152000,base,ft15,BT,True,ERROR,,,,,,,
+base-ft15-nob,checkpoint-750,750,50.0,12288000,base,ft15,NoBT,True,ERROR,,,,,,,
+base-ft15-nob,checkpoint-1500,1500,100.0,24576000,base,ft15,NoBT,True,ERROR,,,,,,,
+base-ft2,checkpoint-750,750,25.0,24576000,base,ft2,BT,True,0.0,0.0,0.0,51.5,0.0,0.0,0.0,200

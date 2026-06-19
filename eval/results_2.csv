@@ -1,0 +1,10 @@
+run,checkpoint,steps,pct_of_run,tokens_seen,family,ft,bt,lora,valid_rate,pass_at_k,json_rate,truncation_rate,sig_match_rate,nontrivial_rate,mean_node_count,n_samples
+base-ft15-nob,checkpoint-750,750,12.5,12288000,base,ft15,NoBT,True,3.0,15.0,3.0,95.0,3.0,3.0,21.7,200
+base-ft2,checkpoint-2250,2250,75.0,73728000,base,ft2,BT,True,ERROR,,,,,,,
+base-ftfull,checkpoint-9000,9000,75.0,73728000,base,ftfull,BT,False,0.0,0.0,3.5,100.0,0.0,0.0,0.0,200
+base-ftfull-nob,checkpoint-1500,1500,50.0,12288000,base,ftfull,NoBT,False,0.0,0.0,1.0,100.0,0.0,0.0,0.0,200
+coder-ft15-nob,checkpoint-1500,1500,25.0,24576000,coder,ft15,NoBT,True,15.0,35.0,15.0,95.0,15.0,15.0,16.1,200
+coder-ft2,checkpoint-1500,1500,50.0,49152000,coder,ft2,BT,True,ERROR,,,,,,,
+coder-ft2-nob,checkpoint-750,750,25.0,24576000,coder,ft2,NoBT,True,ERROR,,,,,,,
+coder-ftfull,checkpoint-6000,6000,50.0,49152000,coder,ftfull,BT,False,0.0,0.0,0.0,95.0,0.0,0.0,0.0,200
+coder-ftfull-nob,checkpoint-1125,1125,37.5,9216000,coder,ftfull,NoBT,False,0.0,0.0,0.0,100.0,0.0,0.0,0.0,200
