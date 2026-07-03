@@ -15,3 +15,6 @@ base-ftfull-nob,checkpoint-750,750,25.0,6144000,base,ftfull,NoBT,False,0.0,0.0,0
 base-ftfull-nob,checkpoint-2250,2250,75.0,18432000,base,ftfull,NoBT,False,0.0,0.0,0.0,95.0,0.0,0.0,0.0,200,181.3,2026-07-03 10:49:24
 coder-ft15,checkpoint-3000,3000,50.0,49152000,coder,ft15,BT,True,ERROR,,,,,,,,,
 coder-ft15-nob,checkpoint-1500,1500,25.0,24576000,coder,ft15,NoBT,True,ERROR,,,,,,,,,
+coder-ft15-nob,checkpoint-4500,4500,75.0,73728000,coder,ft15,NoBT,True,11.5,35.0,11.5,100.0,11.5,11.5,14.0,200,319.6,2026-07-03 10:54:49
+coder-ft2,checkpoint-2250,2250,75.0,73728000,coder,ft2,BT,True,ERROR,,,,,,,,,
+coder-ft2-nob,checkpoint-1125,1125,37.5,36864000,coder,ft2,NoBT,True,ERROR,,,,,,,,,

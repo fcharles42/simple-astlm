@@ -9,3 +9,5 @@ base-ft15-nob,checkpoint-2250,2250,37.5,36864000,base,ft15,NoBT,True,0.0,0.0,0.0
 base-ft15-nob,checkpoint-5250,5250,87.5,86016000,base,ft15,NoBT,True,0.0,0.0,0.0,100.0,0.0,0.0,0.0,200,314.2,2026-07-03 10:45:25
 base-ft2,checkpoint-3000,3000,100.0,98304000,base,ft2,BT,True,ERROR,,,,,,,,,
 base-ft2-nob,checkpoint-1500,1500,50.0,49152000,base,ft2,NoBT,True,ERROR,,,,,,,,,
+base-ft2-nob,checkpoint-3000,3000,100.0,98304000,base,ft2,NoBT,True,1.0,10.0,1.0,95.0,1.0,1.0,14.0,200,366.6,2026-07-03 10:51:34
+base-ftfull,checkpoint-12000,12000,100.0,98304000,base,ftfull,BT,False,0.0,0.0,0.0,100.0,0.0,0.0,0.0,200,187.8,2026-07-03 10:54:41
