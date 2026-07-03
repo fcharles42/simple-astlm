@@ -1,10 +1,11 @@
-run,checkpoint,steps,pct_of_run,tokens_seen,family,ft,bt,lora,valid_rate,pass_at_k,json_rate,truncation_rate,sig_match_rate,nontrivial_rate,mean_node_count,n_samples
-base-ft15,checkpoint-3000,3000,50.0,49152000,base,ft15,BT,True,0.0,0.0,0.0,90.0,0.0,0.0,0.0,200
-base-ft2,checkpoint-1500,1500,50.0,49152000,base,ft2,BT,True,ERROR,,,,,,,
-base-ftfull,checkpoint-6000,6000,50.0,49152000,base,ftfull,BT,False,0.0,0.0,2.5,100.0,0.0,0.0,0.0,200
-base-ftfull-nob,checkpoint-1125,1125,37.5,9216000,base,ftfull,NoBT,False,0.0,0.0,0.0,95.0,0.0,0.0,0.0,200
-coder-ft15-nob,checkpoint-750,750,12.5,12288000,coder,ft15,NoBT,True,6.5,25.0,6.5,100.0,6.5,6.5,14.0,200
-coder-ft2,checkpoint-750,750,25.0,24576000,coder,ft2,BT,True,ERROR,,,,,,,
-coder-ft2-nob,checkpoint-375,375,12.5,12288000,coder,ft2,NoBT,True,ERROR,,,,,,,
-coder-ftfull,checkpoint-3000,3000,25.0,24576000,coder,ftfull,BT,False,0.0,0.0,0.0,100.0,0.0,0.0,0.0,200
-coder-ftfull-nob,checkpoint-750,750,25.0,6144000,coder,ftfull,NoBT,False,0.0,0.0,1.0,100.0,0.0,0.0,0.0,200
+run,checkpoint,steps,pct_of_run,tokens_seen,family,ft,bt,lora,valid_rate,pass_at_k,json_rate,truncation_rate,sig_match_rate,nontrivial_rate,mean_node_count,n_samples,eval_time_s,eval_finished_at
+base-ft15,checkpoint-3000,3000,50.0,49152000,base,ft15,BT,True,0.0,0.0,0.0,90.0,0.0,0.0,0.0,200,,
+base-ftfull,checkpoint-6000,6000,50.0,49152000,base,ftfull,BT,False,0.0,0.0,2.5,100.0,0.0,0.0,0.0,200,,
+base-ftfull-nob,checkpoint-1125,1125,37.5,9216000,base,ftfull,NoBT,False,0.0,0.0,0.0,95.0,0.0,0.0,0.0,200,,
+coder-ft15-nob,checkpoint-750,750,12.5,12288000,coder,ft15,NoBT,True,6.5,25.0,6.5,100.0,6.5,6.5,14.0,200,,
+coder-ftfull,checkpoint-3000,3000,25.0,24576000,coder,ftfull,BT,False,0.0,0.0,0.0,100.0,0.0,0.0,0.0,200,,
+coder-ftfull-nob,checkpoint-750,750,25.0,6144000,coder,ftfull,NoBT,False,0.0,0.0,1.0,100.0,0.0,0.0,0.0,200,,
+base-ft15-nob,checkpoint-2250,2250,37.5,36864000,base,ft15,NoBT,True,0.0,0.0,0.0,100.0,0.0,0.0,0.0,200,347.3,2026-07-03 10:40:11
+base-ft15-nob,checkpoint-5250,5250,87.5,86016000,base,ft15,NoBT,True,0.0,0.0,0.0,100.0,0.0,0.0,0.0,200,314.2,2026-07-03 10:45:25
+base-ft2,checkpoint-3000,3000,100.0,98304000,base,ft2,BT,True,ERROR,,,,,,,,,
+base-ft2-nob,checkpoint-1500,1500,50.0,49152000,base,ft2,NoBT,True,ERROR,,,,,,,,,

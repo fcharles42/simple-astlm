@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Eval all checkpoints: valid AST rate, pass@k, JSON rate, truncation, sig match, body, node count."""
-import os, sys, ast, json, math, csv, re, argparse, traceback, time
+import os, sys, ast, json, math, csv, re, argparse, traceback, time, inspect, tempfile
 from datetime import datetime
 from pathlib import Path
 from collections import defaultdict
@@ -8,7 +8,7 @@ from collections import defaultdict
 import torch
 from safetensors import safe_open
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from peft import PeftModel
+from peft import PeftModel, LoraConfig
 from tqdm import tqdm
 
 REPO_ROOT       = Path(__file__).resolve().parent.parent
@@ -159,6 +159,34 @@ def is_lora(ckpt_dir: Path) -> bool:
     return (ckpt_dir / "adapter_config.json").exists()
 
 
+def sanitized_adapter_dir(ckpt_dir: Path) -> Path:
+    """Checkpoints were saved across sessions with different peft versions, and
+    the installed peft's LoraConfig may not recognize fields a newer peft wrote
+    into adapter_config.json (e.g. 'alora_invocation_tokens') — strip anything
+    unrecognized rather than crash. Symlinks the (large) weight files into a temp
+    dir and only materializes a filtered copy of the small config json, so this
+    never touches the original checkpoint on shared storage."""
+    valid_keys = set(inspect.signature(LoraConfig.__init__).parameters) - {"self"}
+    cfg_path = ckpt_dir / "adapter_config.json"
+    with open(cfg_path) as f:
+        cfg = json.load(f)
+    unrecognized = set(cfg) - valid_keys
+    print(f"  [sanitize] {ckpt_dir.name}: unrecognized fields = {sorted(unrecognized) or 'none'}", flush=True)
+    if not unrecognized:
+        return ckpt_dir  # nothing unrecognized, use as-is
+
+    filtered = {k: v for k, v in cfg.items() if k in valid_keys}
+    tmp_dir = Path(tempfile.mkdtemp(prefix="peft_cfg_"))
+    for item in ckpt_dir.iterdir():
+        if item.name == "adapter_config.json" or not item.is_file():
+            continue
+        os.symlink(item.resolve(), tmp_dir / item.name)
+    with open(tmp_dir / "adapter_config.json", "w") as f:
+        json.dump(filtered, f)
+    print(f"  [sanitize] wrote filtered config to {tmp_dir}", flush=True)
+    return tmp_dir
+
+
 def load_model(base_model_id: str, ckpt_dir: Path, hf_cache: str | None):
     kw = {"cache_dir": hf_cache} if hf_cache else {}
 
@@ -185,7 +213,7 @@ def load_model(base_model_id: str, ckpt_dir: Path, hf_cache: str | None):
                     ckpt_vocab = f.get_tensor(vocab_key).shape[0]
                     if ckpt_vocab != base.config.vocab_size:
                         base.resize_token_embeddings(ckpt_vocab)
-        model = PeftModel.from_pretrained(base, str(ckpt_dir))
+        model = PeftModel.from_pretrained(base, str(sanitized_adapter_dir(ckpt_dir)))
     else:
         model = AutoModelForCausalLM.from_pretrained(
             str(ckpt_dir), torch_dtype=torch.float16, device_map={"": "cuda:0"},

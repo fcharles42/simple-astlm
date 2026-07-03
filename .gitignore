@@ -1,1 +1,7 @@
 data/
+env.py
+checkpoints/
+__pycache__/
+logs/
+scripts/orchestrator_state.csv
+scripts/orchestrator_state.csv.lock
