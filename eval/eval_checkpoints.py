@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Eval all checkpoints: valid AST rate, pass@k, JSON rate, truncation, sig match, body, node count."""
-import os, sys, ast, json, math, csv, re, argparse, traceback, time, inspect, tempfile
+import os, sys, ast, json, math, csv, re, argparse, traceback, time, inspect, tempfile, fcntl, socket, subprocess
 from datetime import datetime
 from pathlib import Path
 from collections import defaultdict
@@ -34,7 +34,10 @@ TOTAL_STEPS = {
 }
 
 K              = 10
-MAX_NEW_TOKENS = 300
+CAPS           = [512, 1024]  # generate once at max(CAPS), derive metrics at each cap by
+                               # slicing — cheaper than re-generating per cap; valid since
+                               # autoregressive sampling up to token N doesn't depend on the
+                               # eventual budget. 300 was truncating 90-100% of generations.
 TEMPERATURE    = 0.2
 
 PREFIXES = [
@@ -226,30 +229,35 @@ def load_model(base_model_id: str, ckpt_dir: Path, hf_cache: str | None):
 # ── eval ─────────────────────────────────────────────────────────────────────
 
 def eval_checkpoint(model, tokenizer) -> dict:
+    """Generates once at max(CAPS). valid/json/sig/nontrivial/node-count are computed
+    on the full max-cap generation (one definitive answer per sample); truncation_rate
+    is reported separately per cap in CAPS, sliced from the same generation (valid since
+    autoregressive sampling up to token N doesn't depend on the eventual budget)."""
+    max_cap = max(CAPS)
     per_prefix = defaultdict(lambda: {
-        "valid": [], "json_ok": [], "truncated": [],
-        "sig_ok": [], "nontrivial": [], "node_counts": [],
+        "valid": [], "json_ok": [], "sig_ok": [], "nontrivial": [], "node_counts": [],
+        **{f"truncated_{cap}": [] for cap in CAPS},
     })
 
     for prefix in tqdm(PREFIXES, desc="  prefixes", leave=False):
         prompt = build_prompt(prefix)
         input_ids = tokenizer.encode(prompt, return_tensors="pt").to(model.device)
+        prompt_len = input_ids.shape[1]
         expanded   = input_ids.expand(K, -1)
-        attn_mask  = torch.ones(K, input_ids.shape[1], device=input_ids.device)
+        attn_mask  = torch.ones(K, prompt_len, device=input_ids.device)
 
         with torch.no_grad():
             out = model.generate(
                 expanded,
                 attention_mask=attn_mask,
-                max_new_tokens=MAX_NEW_TOKENS,
+                max_new_tokens=max_cap,
                 do_sample=True,
                 temperature=TEMPERATURE,
                 eos_token_id=tokenizer.eos_token_id,
                 pad_token_id=tokenizer.eos_token_id,
             )
 
-        n_new     = out.shape[1] - input_ids.shape[1]
-        truncated = n_new >= MAX_NEW_TOKENS
+        n_new_full = out.shape[1] - prompt_len  # true generated length at the largest cap
         p = per_prefix[prefix]
 
         for idx in range(K):
@@ -258,15 +266,15 @@ def eval_checkpoint(model, tokenizer) -> dict:
             valid = tree is not None
             p["json_ok"].append(json_ok)
             p["valid"].append(valid)
-            p["truncated"].append(truncated)
             p["sig_ok"].append(sig_matches(tree, prefix) if valid else False)
             p["nontrivial"].append(body_nontrivial(tree) if valid else False)
             if valid:
                 p["node_counts"].append(count_nodes(tree))
+            for cap in CAPS:
+                p[f"truncated_{cap}"].append(n_new_full >= cap)
 
     all_valid      = [v for p in per_prefix.values() for v in p["valid"]]
     all_json       = [v for p in per_prefix.values() for v in p["json_ok"]]
-    all_trunc      = [v for p in per_prefix.values() for v in p["truncated"]]
     all_sig        = [v for p in per_prefix.values() for v in p["sig_ok"]]
     all_nontrivial = [v for p in per_prefix.values() for v in p["nontrivial"]]
     all_nodes      = [v for p in per_prefix.values() for v in p["node_counts"]]
@@ -275,16 +283,19 @@ def eval_checkpoint(model, tokenizer) -> dict:
 
     def pct(lst): return round(100 * sum(lst) / len(lst), 2) if lst else 0.0
 
-    return {
+    result = {
         "valid_rate":      pct(all_valid),
         "pass_at_k":       round(pass_at_k * 100, 2),
         "json_rate":       pct(all_json),
-        "truncation_rate": pct(all_trunc),
         "sig_match_rate":  pct(all_sig),
         "nontrivial_rate": pct(all_nontrivial),
         "mean_node_count": round(sum(all_nodes) / len(all_nodes), 1) if all_nodes else 0.0,
         "n_samples":       len(all_valid),
     }
+    for cap in CAPS:
+        all_trunc_cap = [v for p in per_prefix.values() for v in p[f"truncated_{cap}"]]
+        result[f"truncation_rate_{cap}"] = pct(all_trunc_cap)
+    return result
 
 
 # ── checkpoint enumeration ────────────────────────────────────────────────────
@@ -325,74 +336,178 @@ def tokens_seen(ft: str, steps: int) -> int:
 
 # ── main ─────────────────────────────────────────────────────────────────────
 
-FIELDNAMES = [
-    "run", "checkpoint", "steps", "pct_of_run", "tokens_seen",
-    "family", "ft", "bt", "lora",
-    "valid_rate", "pass_at_k", "json_rate", "truncation_rate",
-    "sig_match_rate", "nontrivial_rate", "mean_node_count", "n_samples",
-    "eval_time_s", "eval_finished_at",
-]
+def fieldnames_for(caps):
+    return [
+        "run", "checkpoint", "steps", "pct_of_run", "tokens_seen",
+        "family", "ft", "bt", "lora",
+        "valid_rate", "pass_at_k", "json_rate",
+        *[f"truncation_rate_{cap}" for cap in caps],
+        "sig_match_rate", "nontrivial_rate", "mean_node_count", "n_samples",
+        "eval_time_s", "eval_finished_at",
+    ]
+
+
+STATE_FIELDS = ["timestamp", "hostname", "run", "checkpoint", "status"]
+
+
+def row_is_complete(row: dict, trunc_cols: list) -> bool:
+    return (
+        row.get("valid_rate", "ERROR") not in ("ERROR", "")
+        and all(row.get(c, "") != "" for c in trunc_cols)
+    )
+
+
+def completed_checkpoints(results_path: Path, trunc_cols: list) -> set:
+    """results.csv is append-only, so a checkpoint can appear more than once
+    (e.g. an ERROR row followed by a later successful redo) — last row wins."""
+    if not results_path.exists():
+        return set()
+    last_complete = {}
+    with open(results_path) as f:
+        for row in csv.DictReader(f):
+            key = (row["run"], row["checkpoint"])
+            last_complete[key] = row_is_complete(row, trunc_cols)
+    return {k for k, complete in last_complete.items() if complete}
+
+
+def append_csv_row(path: Path, row: dict, fieldnames: list):
+    exists = path.exists()
+    if exists:
+        with open(path) as f:
+            existing_header = f.readline().rstrip("\r\n").split(",")
+        if existing_header != fieldnames:
+            raise RuntimeError(
+                f"{path} has a different column schema than this run's --caps produces "
+                f"(existing: {existing_header}, expected: {fieldnames}). Appending would "
+                f"silently misalign columns. Move/delete the old file (or match --caps to "
+                f"whatever produced it) before continuing."
+            )
+    with open(path, "a", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        if not exists:
+            w.writeheader()
+        w.writerow(row)
+
+
+def claim_next(hostname: str, state_path: Path, results_path: Path,
+               trunc_cols: list, name_filter: str | None):
+    """Same self-scheduling pattern as scripts/orchestrator.py: re-scans
+    checkpoints/ on disk fresh every call (nothing hardcoded), skips whatever's
+    already complete in results.csv or currently claimed (last state row =
+    'started') by another process, claims the first remaining match under an
+    flock so concurrent processes never double-claim."""
+    lock_path = str(state_path) + ".lock"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "w") as lockf:
+        fcntl.flock(lockf, fcntl.LOCK_EX)
+        try:
+            done = completed_checkpoints(results_path, trunc_cols)
+
+            claimed = set()
+            if state_path.exists():
+                last_status = {}
+                with open(state_path) as f:
+                    for row in csv.DictReader(f):
+                        last_status[(row["run"], row["checkpoint"])] = row["status"]
+                claimed = {k for k, v in last_status.items() if v == "started"}
+
+            for run_name, ckpt_name, ckpt_path in enumerate_checkpoints():
+                if name_filter and name_filter not in run_name:
+                    continue
+                key = (run_name, ckpt_name)
+                if key in done or key in claimed:
+                    continue
+                append_csv_row(state_path, {
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"), "hostname": hostname,
+                    "run": run_name, "checkpoint": ckpt_name, "status": "started",
+                }, STATE_FIELDS)
+                return run_name, ckpt_name, ckpt_path
+            return None
+        finally:
+            fcntl.flock(lockf, fcntl.LOCK_UN)
+
+
+def spawn_gpu_workers(n_gpus: int, argv: list) -> int:
+    """Re-invokes this same script once per GPU, each pinned via
+    CUDA_VISIBLE_DEVICES, so one command uses every GPU on the node instead of
+    requiring N manual launches. Workers self-coordinate through the same
+    claim_next()/flock as any other concurrent invocation — this is just a
+    convenience wrapper around launching that many processes by hand."""
+    print(f"[eval] spawning {n_gpus} GPU workers")
+    procs = []
+    for i in range(n_gpus):
+        env = os.environ.copy()
+        env["CUDA_VISIBLE_DEVICES"] = str(i)  # relative to whatever's already visible, not raw physical IDs
+        env["_EVAL_WORKER"] = "1"  # our own marker — don't rely on CUDA_VISIBLE_DEVICES presence to
+                                    # detect "already a worker", SLURM sets that ambiently for the job too
+        procs.append(subprocess.Popen([sys.executable, __file__, *argv], env=env))
+    exit_codes = [p.wait() for p in procs]
+    failed = [i for i, code in enumerate(exit_codes) if code != 0]
+    if failed:
+        print(f"[eval] worker(s) for GPU(s) {failed} exited non-zero")
+    return 1 if failed else 0
 
 
 def main():
+    global K, CAPS
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--hf-cache", default=None)
     parser.add_argument("--filter",   default=None, help="only runs matching this substring")
-    parser.add_argument("--shard",    default=None, help="i/n e.g. 0/4 — process i-th shard of n")
     parser.add_argument("--output",   default=str(OUTPUT_CSV))
     parser.add_argument("--k",        type=int, default=10)
+    parser.add_argument("--caps", default=",".join(str(c) for c in CAPS),
+                         help="comma-separated generation-length caps, e.g. 512,1024 — "
+                              "generates once at the max, derives metrics at every cap")
+    parser.add_argument("--gpus", type=int, default=None,
+                         help="spawn this many GPU-pinned worker processes (one per GPU) "
+                              "instead of running single-GPU. Default: auto-detect via "
+                              "torch.cuda.device_count() and use all of them. Pass 1 to "
+                              "force single-process behavior.")
     args = parser.parse_args()
 
-    global K
+    # our own marker (set only by spawn_gpu_workers) — NOT CUDA_VISIBLE_DEVICES presence,
+    # since SLURM/the job scheduler may already set that ambiently for the whole allocation
+    already_spawned_worker = os.environ.get("_EVAL_WORKER") == "1"
+    if not already_spawned_worker:
+        n_gpus = args.gpus if args.gpus is not None else torch.cuda.device_count()
+        if n_gpus > 1:
+            sys.exit(spawn_gpu_workers(n_gpus, sys.argv[1:]))
+
     K = args.k
-
-    checkpoints = list(enumerate_checkpoints())
-    if args.filter:
-        checkpoints = [(r, c, p) for r, c, p in checkpoints if args.filter in r]
-    if args.shard:
-        i, n = map(int, args.shard.split("/"))
-        checkpoints = checkpoints[i::n]
-
-    print(f"Found {len(checkpoints)} checkpoints")
-    for r, c, _ in checkpoints:
-        print(f"  {r}/{c}")
+    CAPS = sorted(int(c) for c in args.caps.split(","))
+    fieldnames = fieldnames_for(CAPS)
+    trunc_cols = [f"truncation_rate_{cap}" for cap in CAPS]
 
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path = out_path.parent / "eval_state.csv"
+    hostname = socket.gethostname()
 
-    done = set()
-    rows = []
-    if out_path.exists():
-        with open(out_path) as f:
-            for row in csv.DictReader(f):
-                # only skip if eval actually completed (not an ERROR row)
-                if row.get("valid_rate", "ERROR") not in ("ERROR", ""):
-                    rows.append(row)
-                    done.add((row["run"], row["checkpoint"]))
-                else:
-                    print(f"[redo] {row['run']}/{row['checkpoint']} — previous run errored")
-        print(f"Resuming — {len(done)} already done")
-
-    for run_name, ckpt_name, ckpt_path in checkpoints:
-        if (run_name, ckpt_name) in done:
-            print(f"[skip] {run_name}/{ckpt_name}")
-            continue
+    while True:
+        claim = claim_next(hostname, state_path, out_path, trunc_cols, args.filter)
+        if claim is None:
+            print("[eval] no incomplete, unclaimed checkpoints left — exiting")
+            break
+        run_name, ckpt_name, ckpt_path = claim
+        print(f"\n{'='*60}")
+        print(f"[eval] {hostname} claimed {run_name}/{ckpt_name}")
 
         specs    = parse_run_name(run_name)
         steps    = int(ckpt_name.replace("checkpoint-", ""))
         pct      = pct_of_run(specs["ft"], specs["bt"], steps)
         tok_seen = tokens_seen(specs["ft"], steps)
-
-        print(f"\n{'='*60}")
-        print(f"{run_name}/{ckpt_name}  |  {pct}% of run  |  ~{tok_seen/1e6:.1f}M tokens")
+        print(f"{pct}% of run  |  ~{tok_seen/1e6:.1f}M tokens")
 
         row = {
             "run": run_name, "checkpoint": ckpt_name, "steps": steps,
             "pct_of_run": pct, "tokens_seen": tok_seen, **specs, "lora": is_lora(ckpt_path),
             "valid_rate": "ERROR", "pass_at_k": "", "json_rate": "",
-            "truncation_rate": "", "sig_match_rate": "", "nontrivial_rate": "",
+            **{c: "" for c in trunc_cols},
+            "sig_match_rate": "", "nontrivial_rate": "",
             "mean_node_count": "", "n_samples": "", "eval_time_s": "", "eval_finished_at": "",
         }
+        status = "failed"
 
         try:
             base_id = BASE_MODELS[specs["family"]]
@@ -404,8 +519,10 @@ def main():
             row.update(metrics)
             row["eval_time_s"] = elapsed
             row["eval_finished_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            status = "finished"
+            trunc_str = "  ".join(f"trunc@{cap}={metrics[f'truncation_rate_{cap}']}%" for cap in CAPS)
             print(f"  valid={metrics['valid_rate']}%  pass@k={metrics['pass_at_k']}%  "
-                  f"json={metrics['json_rate']}%  trunc={metrics['truncation_rate']}%  "
+                  f"json={metrics['json_rate']}%  {trunc_str}  "
                   f"sig={metrics['sig_match_rate']}%  nodes={metrics['mean_node_count']}")
         except Exception:
             traceback.print_exc()
@@ -414,12 +531,12 @@ def main():
             except: pass
             torch.cuda.empty_cache()
 
-        rows.append(row)
-        with open(out_path, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=FIELDNAMES)
-            writer.writeheader()
-            writer.writerows(rows)
-        print(f"  → {out_path}")
+        append_csv_row(out_path, row, fieldnames)
+        append_csv_row(state_path, {
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"), "hostname": hostname,
+            "run": run_name, "checkpoint": ckpt_name, "status": status,
+        }, STATE_FIELDS)
+        print(f"  → {out_path}  [{status}]")
 
     print(f"\nDone. {out_path}")
 
